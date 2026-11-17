@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
@@ -69,15 +70,22 @@ def apply_block(doc: DocxBuilder, blk: dict, diagrams_dir: str):
         raise ValueError(f"Unknown block type: {btype}")
 
 
-def audit_docx(docx_path: str, expected_images: int):
+def audit_docx(docx_path: str, expected_images: int, custom_template: bool = False, strict_delivery: bool = False):
+    w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    md_pat = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff-]+\.md")
+    ip_pat = re.compile(r"(?:10|127|172|192|0)\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?")
+
     with zipfile.ZipFile(docx_path, "r") as z:
         bad_zip = z.testzip()
         if bad_zip is not None:
             raise RuntimeError(f"Corrupted zip member: {bad_zip}")
         doc_xml = z.read("word/document.xml")
+        styles_xml = z.read("word/styles.xml").decode("utf-8", "ignore") if "word/styles.xml" in z.namelist() else ""
         media_files = [n for n in z.namelist() if n.startswith("word/media/")]
+
+    doc_text_xml = doc_xml.decode("utf-8", "ignore")
     root = ET.fromstring(doc_xml)
-    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    ns = {"w": w_ns}
     all_text = "".join(t.text or "" for t in root.findall(".//w:t", ns))
     leftovers = []
     for tok in ["【", "】", "（示例）", "填写要求", "常见错误", "模板）"]:
@@ -86,12 +94,43 @@ def audit_docx(docx_path: str, expected_images: int):
             leftovers.append((tok, cnt))
     drawings = len(root.findall(".//w:drawing", ns))
     tables = len(root.findall(".//w:tbl", ns))
+
+    both_styles = styles_xml.count('w:val="both"')
+    both_doc = doc_text_xml.count('w:val="both"')
+    body = root.find(f"{{{w_ns}}}body")
+    missing_hdr_kn = 0
+    for tbl in root.findall(".//w:tbl", ns):
+        trs = tbl.findall(f"{{{w_ns}}}tr")
+        if len(trs) > 1:
+            tr_pr = trs[0].find(f"{{{w_ns}}}trPr")
+            if tr_pr is not None and tr_pr.find(f"{{{w_ns}}}tblHeader") is not None:
+                if any(
+                    (p.find(f"{{{w_ns}}}pPr") is None or p.find(f"{{{w_ns}}}pPr").find(f"{{{w_ns}}}keepNext") is None)
+                    for p in trs[0].iter(f"{{{w_ns}}}p")
+                ):
+                    missing_hdr_kn += 1
+
+    body_blocks = ["".join(el.itertext()) for el in body] if body is not None else []
+    app_idx = next((i for i, txt in enumerate(body_blocks) if "附录 A" in txt or "附录A" in txt or txt.strip().startswith("附录")), len(body_blocks))
+    pre_app_text = "\n".join(body_blocks[:app_idx])
+    md_hits = md_pat.findall("\n".join(body_blocks))
+    ip_pre_hits = ip_pat.findall(pre_app_text)
+
     print(f"[AUDIT] path={docx_path}")
-    print(f"[AUDIT] tables={tables}, drawings={drawings}, media={len(media_files)}")
+    print(f"[AUDIT] tables={tables}, drawings={drawings}, media={len(media_files)}, jc_both=({both_styles},{both_doc}), hdr_missing_keepNext={missing_hdr_kn}")
+    if md_hits:
+        print(f"[AUDIT WARN] Internal .md file reference(s) detected: {md_hits[:8]}")
+    if ip_pre_hits:
+        print(f"[AUDIT WARN] Raw IP literal(s) detected before Appendix: {ip_pre_hits[:8]}")
+
     if drawings != expected_images or len(media_files) != expected_images:
         raise RuntimeError(f"Image count mismatch: expected={expected_images}, drawings={drawings}, media={len(media_files)}")
     if leftovers:
         raise RuntimeError(f"Leftover template tokens found: {leftovers}")
+    if (not custom_template or strict_delivery) and (both_styles > 0 or both_doc > 0 or missing_hdr_kn > 0):
+        raise RuntimeError(f"OOXML layout check failed: jc_both=({both_styles},{both_doc}), hdr_missing_keepNext={missing_hdr_kn}")
+    if strict_delivery and (md_hits or ip_pre_hits):
+        raise RuntimeError(f"Strict delivery check failed: md_refs={md_hits[:5]}, pre_appendix_ips={ip_pre_hits[:5]}")
     print("[AUDIT] PASSED (zip OK, XML OK, 0 leftover template placeholders)")
 
 
@@ -101,6 +140,7 @@ def main():
     parser.add_argument("--spec", nargs="+", required=True, help="Ordered JSON spec file(s)")
     parser.add_argument("--diagrams-dir", default=".", help="Directory containing rendered diagram PNGs")
     parser.add_argument("--template", default="", help="Optional custom .docx template path")
+    parser.add_argument("--strict-delivery", action="store_true", help="Fail if internal .md refs, pre-appendix bare IPs, jc='both', or orphaned table headers exist")
     parser.add_argument("--out", required=True, help="Output .docx file path")
     args = parser.parse_args()
 
@@ -119,6 +159,10 @@ def main():
         else:
             raise ValueError(f"Invalid spec JSON root in {sp_path}")
 
+    toc_default_ones = sum(1 for b in blocks if b.get("type") == "heading" and int(b.get("level", 9)) <= 3 and "estPage" not in b)
+    if toc_default_ones > 0:
+        print(f"[AUDIT WARN] {toc_default_ones} TOC heading(s) missing 'estPage' (will default to page 1 in TOC)")
+
     doc = DocxBuilder(
         header_title=meta.get("headerTitle", meta.get("docTitle", "软件开发详细设计说明书")),
         doc_title=meta.get("docTitle", "软件开发详细设计说明书"),
@@ -132,7 +176,7 @@ def main():
         apply_block(doc, blk, args.diagrams_dir)
 
     out_path = doc.build(args.out)
-    audit_docx(out_path, img_count)
+    audit_docx(out_path, img_count, custom_template=bool(args.template), strict_delivery=bool(args.strict_delivery))
 
 
 if __name__ == "__main__":

@@ -17,7 +17,8 @@
   - `snap_diagrams.cjs` 自动检测本地 / 全局 / `npx` 缓存中的 `playwright` 或 `playwright-core`；
   - 若未安装 Playwright，**自动回退为零依赖原生 Chrome/Edge DevTools Protocol (CDP)**，在 Windows 上直接调用系统自带的 **Microsoft Edge** 或 **Google Chrome** 完成高清截图；
   - 支持读取 Windows UTF-8 with BOM（`utf-8-sig`）JSON、正确处理 Windows `file:///C:/...` 路径 URL、确保 `.docx` ZIP 内部使用 POSIX `/` 路径以及 UTF-8 控制台输出。
-- **交付自检**：`build_from_spec.py` 内置 ZIP 完整性、XML 良构、图片数量一致及模板占位符残留检查。
+- **排版自适应与防踩坑保障**：默认左对齐消除中英混排换行拉宽、`3.x.3.k` 长签名自动独立成行、跨页表头绑定 `keepNext`（短表整表不拆）消除跨页重复表头，支持 `--strict-delivery` 自动检查未交付 `.md` 引用与正文裸 IP 泄漏。
+- **交付自足与自检**：`build_from_spec.py` 内置 ZIP 完整性、XML 良构、图片数量一致、模板占位符、排版对齐及 `附录 A` 端点收敛检查。
 
 ---
 
@@ -98,6 +99,7 @@ node scripts/snap_diagrams.cjs ./diagrams_out
 python scripts/build_from_spec.py \
   --spec spec_part1.json spec_part2.json \
   --diagrams-dir ./diagrams_out \
+  --strict-delivery \
   --out ./output.docx
 ```
 

@@ -120,7 +120,7 @@ def run_smoke_test(engine="auto", keep_docx=""):
         for cmd in (
             [sys.executable, os.path.join(SCRIPT_DIR, "diagram_dsl.py"), diagrams_json, diagrams_out],
             [node_bin, os.path.join(SCRIPT_DIR, "snap_diagrams.cjs"), f"--engine={engine}", diagrams_out],
-            [sys.executable, os.path.join(SCRIPT_DIR, "build_from_spec.py"), "--spec", spec_json, "--diagrams-dir", diagrams_out, "--out", out_docx],
+            [sys.executable, os.path.join(SCRIPT_DIR, "build_from_spec.py"), "--spec", spec_json, "--diagrams-dir", diagrams_out, "--strict-delivery", "--out", out_docx],
         ):
             res = run_cmd(cmd)
             if res.stdout:

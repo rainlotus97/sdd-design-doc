@@ -31,12 +31,12 @@
 | `doc_title` | `text` | — | 封面居中大标题（不进入目录） |
 | `toc` | — | — | 自动目录占位，插入后由 `TocEntries` 自动填充 |
 | `blank` | — | `size` (默认8) | 小间距空行 |
-| `heading` | `level` (1..5), `text` | `pageBreak` (bool), `estPage` (int), `center` (bool) | 1~3 级自动记入 TOC 书签；5 级字体为 10.5pt 加粗 |
-| `para` | `text` | `boldPrefix`, `spaceAfter` | 正文段落（支持 `\n` 分段） |
+| `heading` | `level` (1..5), `text` | `pageBreak` (bool), `estPage` (int), `center` (bool) | 1~3 级自动记入 TOC 书签（均须显式填单调非降 `estPage`，防目录回退显示 `1`）；内置 `<w:keepNext>` |
+| `para` | `text` | `boldPrefix`, `spaceAfter` | 正文左对齐段落（`3.x.3.k Method(...)` 且 `len>32` 自动拆出深蓝加粗标题行） |
 | `bullet` | `text` | `boldPrefix` | 项目符号列表项 |
 | `steps` | `items` (string[]) | — | 自动编号步骤（`1. ... 2. ...`） |
 | `code` | `lines` (string[]) | — | `Consolas` 左蓝竖线浅灰底代码块（仅用于报文/配置/签名示例，**不贴实现源码**） |
-| `table` | `headers`, `rows` | `colWidths` (总和9643), `centerCols` (int[]) | `#2E74B5` 蓝底白字表头，跨页重复表头、行内防断页 |
+| `table` | `headers`, `rows` | `colWidths` (总和9643), `centerCols` (int[]) | `#2E74B5` 蓝底白字表头；内置首行 `keepNext` 与 `<=3` 行短表防拆分，消除跨页双表头 |
 | `image` | `file`, `caption` | `maxWidthEmu` (默认5852160) | 居中插入高清图及加粗图题 |
 
 ---
@@ -65,3 +65,16 @@
     - `3.x.4.7 日志与可观测`
   - `3.x.5 DFX分析与设计`：`3.x.5.1 可靠性与容错` / `3.x.5.2 安全`
   - `3.x.6 使用举例`（给出输入、步骤与确定输出的可验收场景）
+- **附录 A（有外部接口/MQTT/联调端点时必需）**：`附录 A 外部接口契约、MQTT 主题与联调端点一览`（`level: 1`, `pageBreak: true`, `center: true`），建议下设：
+  - `A.1 外部 HTTP / WebSocket / UDP 接口请求返回值一览`（方法、路径、Header/Query/Body、返回体关键字段与异常判定）
+  - `A.2 外部 MQTT 主题与载荷字段一览`（Topic 名、订阅模式、排队策略与原始字段）
+  - `A.3 联调与部署端点配置参考`（集中列出默认/联调/Mock 环境下的真实 IP、主机名与端口映射）
+
+---
+
+## 4. 正式 `.docx` 交付质量门禁规则
+
+1. **禁止 `.md` 外部基线引用**：`.docx` 封面“设计输入”、`1.3` 及正文不得出现内部 `*.md` 文件名；必须改用真实代码模块/DTO/协议规范名并内嵌核心事实。
+2. **正文去 IP 化**：正文（含 `1~3` 章与图表文字）中不直接写出具体环境 IP（`192.168.*` / `10.*` 等），统一用配置常量符号名（如 `IntegrationEndpoints.*`、`LOOPBACK_HOST`）指代，IP 统一放入 `附录 A`。
+3. **接口与协议展开**：`3.x.4.1 接口契约` 须写清请求参数、请求头/Body、返回值结构体字段及异常边界（而非仅写一句“调用某某接口”）。
+4. **排版与表头防双绘**：禁止使用 `both` 两端对齐；表格首行必须通过 `docx_builder.py` 写入 `<w:keepNext w:val="1"/>`，`<= 3` 行短表整体不跨页拆散。可通过 `build_from_spec.py --strict-delivery` 自动强制校验以上规则。

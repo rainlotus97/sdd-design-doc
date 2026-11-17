@@ -84,7 +84,7 @@ class DocxBuilder:
             bm_name = f"_Toc{2000 + bm_id}"
             self.toc_entries.append((level, bm_name, text, est_page))
             self.elements.append(
-                f'<w:p w14:paraId="{pid}"><w:pPr><w:pStyle w:val="{style_id}"/>{ppr_extra}<w:keepNext w:val="1"/><w:bidi w:val="0"/>{jc_xml}'
+                f'<w:p w14:paraId="{pid}"><w:pPr><w:pStyle w:val="{style_id}"/><w:keepNext w:val="1"/>{ppr_extra}<w:bidi w:val="0"/>{jc_xml}'
                 f'<w:rPr><w:rFonts w:hint="eastAsia"/>{rpr_override}<w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr>'
                 f'<w:bookmarkStart w:id="{bm_id}" w:name="{bm_name}"/>'
                 f'<w:r>{run_rpr}{self._t(text)}</w:r>'
@@ -92,7 +92,7 @@ class DocxBuilder:
             )
         else:
             self.elements.append(
-                f'<w:p w14:paraId="{pid}"><w:pPr><w:pStyle w:val="{style_id}"/>{ppr_extra}<w:keepNext w:val="1"/><w:bidi w:val="0"/>{jc_xml}'
+                f'<w:p w14:paraId="{pid}"><w:pPr><w:pStyle w:val="{style_id}"/><w:keepNext w:val="1"/>{ppr_extra}<w:bidi w:val="0"/>{jc_xml}'
                 f'<w:rPr><w:rFonts w:hint="eastAsia"/>{rpr_override}<w:lang w:eastAsia="zh-CN"/></w:rPr></w:pPr>'
                 f'<w:r>{run_rpr}{self._t(text)}</w:r></w:p>'
             )
@@ -217,9 +217,11 @@ class DocxBuilder:
                 f'<w:b w:val="1"/><w:color w:val="FFFFFF"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>'
                 f'{self._t(str(htext))}</w:r></w:p></w:tc>'
             )
-        tr_list.append(f'<w:tr><w:trPr><w:tblHeader w:val="1"/><w:cantSplit/></w:trPr>{"".join(hdr_cells)}</w:tr>')
+        tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/><w:tblHeader w:val="1"/></w:trPr>{"".join(hdr_cells)}</w:tr>')
 
-        for row in rows:
+        keep_short_table = len(rows) <= 3
+        for r_idx, row in enumerate(rows):
+            row_keep_next = '<w:keepNext w:val="1"/>' if (keep_short_table and r_idx < len(rows) - 1) else ''
             row_cells = []
             for c_idx in range(ncols):
                 val = row[c_idx] if c_idx < len(row) else ""
@@ -227,10 +229,11 @@ class DocxBuilder:
                 jc = '<w:jc w:val="center"/>' if c_idx in center_cols else '<w:jc w:val="left"/>'
                 lines = str(val).split("\n")
                 p_list = []
-                for line in lines:
+                for l_idx, line in enumerate(lines):
                     lpid = self._next_para_id()
+                    p_kn = row_keep_next if l_idx == len(lines) - 1 else '<w:keepNext w:val="1"/>'
                     p_list.append(
-                        f'<w:p w14:paraId="{lpid}"><w:pPr><w:spacing w:before="25" w:after="25" w:line="240" w:lineRule="auto"/>{jc}'
+                        f'<w:p w14:paraId="{lpid}"><w:pPr>{p_kn}<w:spacing w:before="25" w:after="25" w:line="240" w:lineRule="auto"/>{jc}'
                         f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
                         f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
                         f'<w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>'
@@ -239,7 +242,7 @@ class DocxBuilder:
                 row_cells.append(
                     f'<w:tc><w:tcPr><w:tcW w:w="{cw}" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>{"".join(p_list)}</w:tc>'
                 )
-            tr_list.append(f'<w:tr><w:trPr><w:cantSplit/></w:trPr>{"".join(row_cells)}</w:tr>')
+            tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/></w:trPr>{"".join(row_cells)}</w:tr>')
 
         self.elements.append(
             f'<w:tbl><w:tblPr><w:tblStyle w:val="000014"/><w:tblW w:w="0" w:type="auto"/><w:tblInd w:w="0" w:type="dxa"/>'
