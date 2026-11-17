@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+Thumbs.db
+node_modules/
+diagrams_out/
+preview/
+*.docx
+!resources/**/*.docx
+.venv/
+venv/
