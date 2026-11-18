@@ -16,13 +16,15 @@
 
 ## 核心特性
 
-- **设计重流程 + 代码重架构、枚举与类契约**：
+- **开篇模块架构图 + 流程重闭环 + 代码少而精（`code_card`）**：
+  - 每个 `3.x` 模块在 `3.x.1` 开篇先附一张 **`layers` 代码模块架构图**，明晰自身业务横跨工程内哪些模块、各自做什么及依赖关系；
   - `3.x.1~3.x.2` 聚焦主业务流程与正常/异常闭环（网络超时、重试、401 续期、非法值降级），拒绝私有布局像素常量刷屏；
-  - `3.x.3` 配备按职责分组的 UML 类图（含紫色 `«enum»` 与天蓝 `«Model»` 色带）、核心枚举（Enum）定义表及完整方法签名契约（不贴函数实现体）。
+  - `3.x.3` 配备分组 UML 类图（含紫色 `«enum»` 与天蓝 `«Model»` 色带），并通过全宽 **`code_card`** 仅精选 2~4 个核心重点函数与核心枚举/模型（写清职责、输入、输出与边界，杜绝窄列断词与私有变量堆砌）。
 - **`3.99 公共基础能力设计` 防跨模块重复**：
   - 统一认证登录与令牌静默续期、共性 HTTP 重试与切页取消、全局资源配额池、跨模块共享组件集中收敛到 `3.99`，各业务章节只写业务增量并声明引用。
-- **外部接口 `api_card` + 一行一条清爽排版**：
-  - HTTP/MQTT/UDP/WS 外部接口用独立卡片展示，任何 `1/2/3`、`①/②/③` 多点列举均分行呈现（`--strict-delivery` 自动拦截分号句堆砌、`.md` 残留引用、正文中散落 IP、表格 `both` 对齐与孤立表头）。
+- **外部接口与 MQTT 对等卡片化（`api_card`）+ 一行一条清爽排版**：
+  - HTTP/UDP/WS 与 **MQTT Topic** 同等展开：MQTT 卡片完整展示 Topic、订阅/发布策略（`direction`/`qos`）、**JSON `payload` 载荷结构**、逐字段中文解释、消费方式与断链/空包兜底；
+  - 任何 `1/2/3`、`①/②/③` 多点列举均强制分行呈现（`--strict-delivery` 自动拦截分号句堆砌、`.md` 残留引用、正文中散落 IP、表格 `both` 对齐与孤立表头）。
 - **零外部 Python-docx 依赖渲染**：基于声明式 SVG → Chromium/Playwright/CDP 高分渲染 PNG + 原生 OOXML 构建与无损 XML 合入。
 
 ---
@@ -59,7 +61,7 @@ py -3 scripts/check_env.py --smoke-test
 - [skills/](./skills) — `sdd-design-doc-plan` / `-module` / `-full` / `-merge` 四大专用子 Skill
 - [scripts/diagram_dsl.py](./scripts/diagram_dsl.py) — 流程图、时序图、分层图、UML 类图（含 `enum`/`model`）生成器
 - [scripts/snap_diagrams.cjs](./scripts/snap_diagrams.cjs) — Playwright / 零依赖 CDP 浏览器高分辨率 PNG 截图器
-- [scripts/docx_builder.py](./scripts/docx_builder.py) — 原生 OOXML 生成引擎（左对齐、`keepNext` 防双表头、`api_card` 分行列表）
+- [scripts/docx_builder.py](./scripts/docx_builder.py) — 原生 OOXML 生成引擎（左对齐、`keepNext` 防双表头、HTTP/MQTT `api_card` 与全宽 `code_card`）
 - [scripts/build_from_spec.py](./scripts/build_from_spec.py) — `--mode full|module` 构建与 `--strict-delivery` 审计器
 - [scripts/merge_sdd.py](./scripts/merge_sdd.py) — 多模块去重组装（`assemble`）、主文档探测（`inspect`）与无损合入更新目录（`inject`）
 - [references/](./references) — Story 规划模板、JSON Schema 与图表编写手册
