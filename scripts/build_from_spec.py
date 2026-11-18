@@ -76,6 +76,13 @@ def audit_docx(docx_path: str, expected_images: int, custom_template: bool = Fal
     w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
     md_pat = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff-]+\.md")
     ip_pat = re.compile(r"(?:10|127|172|192|0)\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?")
+    inline_enum_pats = [
+        re.compile(r"①[^①\n]{2,}②"),
+        re.compile(r"(?<![\d\.])1）[^）\n]{2,}[；;，,]?\s*2）"),
+        re.compile(r"(?:(?<=^)|(?<=[：:；;\s]))1\)\s*[^;\n]{2,}[；;]\s*2\)"),
+        re.compile(r"（1）[^（\n]{2,}[；;]?\s*（2）"),
+        re.compile(r"(?:(?<=^)|(?<=[：:；;\s]))1\.\s+[^\n]{3,}[；;]\s*2\.\s+"),
+    ]
 
     with zipfile.ZipFile(docx_path, "r") as z:
         bad_zip = z.testzip()
@@ -127,9 +134,17 @@ def audit_docx(docx_path: str, expected_images: int, custom_template: bool = Fal
     md_hits = md_pat.findall("\n".join(body_blocks))
     ip_pre_hits = ip_pat.findall(pre_app_text)
 
+    inline_enum_hits = []
+    for p_el in root.findall(".//w:body//w:p", ns):
+        pt = "".join(t.text or "" for t in p_el.findall(".//w:t", ns)).strip()
+        if not pt:
+            continue
+        if any(pat.search(pt) for pat in inline_enum_pats):
+            inline_enum_hits.append(pt[:48] + ("..." if len(pt) > 48 else ""))
+
     has_toc = "目  录" in doc_text_xml
     p_texts = ["".join(p.itertext()).strip() for p in body.findall(f"{{{w_ns}}}p")] if body is not None else []
-    has_ch3 = any(t.startswith("3 模块详细设计") or t.startswith("3.1 ") for t in p_texts)
+    has_ch3 = any(t.startswith("3 模块详细设计") or t.startswith("3.1 ") or t.startswith("3.99 ") for t in p_texts)
     has_ch1_or_2 = any(t.startswith("1 引言") or t.startswith("2 设计概览") for t in p_texts)
 
     print(f"[AUDIT] path={docx_path}")
@@ -138,6 +153,8 @@ def audit_docx(docx_path: str, expected_images: int, custom_template: bool = Fal
         print(f"[AUDIT WARN] Internal .md file reference(s) detected: {md_hits[:8]}")
     if ip_pre_hits:
         print(f"[AUDIT WARN] Raw IP literal(s) detected before Appendix: {ip_pre_hits[:8]}")
+    if inline_enum_hits:
+        print(f"[AUDIT WARN] Inline bunched enumeration(s) detected (split into one-per-line items): {inline_enum_hits[:6]}")
 
     if drawings != expected_images or len(media_files) != expected_images:
         raise RuntimeError(f"Image count mismatch: expected={expected_images}, drawings={drawings}, media={len(media_files)}")
@@ -154,8 +171,10 @@ def audit_docx(docx_path: str, expected_images: int, custom_template: bool = Fal
             raise RuntimeError("Mode 'module' with --strict-delivery must focus only on Chapter 3 without '1 引言' / '2 设计概览'")
     if (not custom_template or strict_delivery) and (both_styles > 0 or both_doc > 0 or missing_hdr_kn > 0):
         raise RuntimeError(f"OOXML layout check failed: jc_both=({both_styles},{both_doc}), hdr_missing_keepNext={missing_hdr_kn}")
-    if strict_delivery and (md_hits or ip_pre_hits):
-        raise RuntimeError(f"Strict delivery check failed: md_refs={md_hits[:5]}, pre_appendix_ips={ip_pre_hits[:5]}")
+    if strict_delivery and (md_hits or ip_pre_hits or inline_enum_hits):
+        raise RuntimeError(
+            f"Strict delivery check failed: md_refs={md_hits[:5]}, pre_appendix_ips={ip_pre_hits[:5]}, inline_enums={inline_enum_hits[:4]}"
+        )
     print("[AUDIT] PASSED (zip OK, XML OK, 0 leftover template placeholders)")
 
 

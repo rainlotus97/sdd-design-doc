@@ -301,9 +301,13 @@ def render_class(spec: dict) -> str:
         attrs = cls.get("attrs", [])
         methods = cls.get("methods", [])
         role = cls.get("role", "default")
-        header_fill = "#0F766E" if "interface" in stereo.lower() or role == "interface" else (
-            "#1E3A5F" if role in ("core", "facade", "singleton") else (
-                "#475569" if role == "constants" else "#2E74B5"
+        header_fill = "#6D28D9" if "enum" in stereo.lower() or role == "enum" else (
+            "#0F766E" if "interface" in stereo.lower() or role == "interface" else (
+                "#1E3A5F" if role in ("core", "facade", "singleton") else (
+                    "#0369A1" if "model" in stereo.lower() or "dto" in stereo.lower() or role in ("model", "dto") else (
+                        "#475569" if role == "constants" else "#2E74B5"
+                    )
+                )
             )
         )
         header_fill = cls.get("headerFill", header_fill)

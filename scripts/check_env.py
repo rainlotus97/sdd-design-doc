@@ -123,7 +123,11 @@ def run_smoke_test(engine="auto", keep_docx=""):
         }
 
         mod_spec_json = os.path.join(tmp, "spec_module.json")
+        mod_b_spec_json = os.path.join(tmp, "spec_module_b.json")
+        shared_spec_json = os.path.join(tmp, "spec_shared_3_99.json")
         mod_out_docx = os.path.join(tmp, "smoke_module_sdd.docx")
+        merged_full_docx = os.path.join(tmp, "smoke_merged_full.docx")
+        injected_docx = os.path.join(tmp, "smoke_injected.docx")
         mod_payload = {
             "docTitle": "第 3 章 详细设计（自检模块）",
             "headerTitle": "第 3 章 模块设计自检 V1.0",
@@ -132,18 +136,31 @@ def run_smoke_test(engine="auto", keep_docx=""):
                 {"type": "heading", "level": 1, "text": "3 模块详细设计", "center": True},
                 {"type": "heading", "level": 2, "text": "3.1 示例可迁移模块详细设计"},
                 {"type": "heading", "level": 3, "text": "3.1.1 方案概述"},
-                {"type": "para", "text": "验证仅第 3 章可移植模块输出模式，不含第 1/2 章与多余目录。"},
+                {"type": "para", "text": "验证仅第 3 章可移植模块输出模式，不含第 1/2 章与多余目录。认证与重试遵守 3.99.1 规约。"},
                 {
                     "type": "api_card",
                     "method": "GET",
                     "endpoint": "/api/v1/demo/status",
                     "summary": "模块模式接口卡片自检",
-                    "trigger": "进页触发",
+                    "trigger": ["1. 首次进页触发", "2. 定时轮询触发"],
                     "fields": [{"name": "status", "desc": "运行状态"}],
-                    "fallback": "超时重试并维持旧状态"
+                    "fallback": ["1. 网络超时按退避策略重试", "2. 失败维持旧状态"]
                 },
                 {"type": "image", "file": "fig_smoke_flow.png", "caption": "图 3-1 自检流程图"},
             ],
+        }
+        mod_b_payload = {
+            "blocks": [
+                {"type": "heading", "level": 2, "text": "3.1 业务域 B 详细设计"},
+                {"type": "heading", "level": 3, "text": "3.1.1 核心枚举与状态"},
+                {"type": "image", "file": "fig_smoke_flow.png", "caption": "图 3-1 域B主干流程图"},
+            ]
+        }
+        shared_payload = {
+            "blocks": [
+                {"type": "heading", "level": 3, "text": "3.99.1 统一认证与网络重试"},
+                {"type": "para", "text": "跨模块共享的 401 自动续期与指数退避重试能力。"},
+            ]
         }
 
         # Write with UTF-8 BOM on purpose to verify Windows PowerShell compatibility
@@ -153,12 +170,19 @@ def run_smoke_test(engine="auto", keep_docx=""):
             json.dump(spec_payload, f, ensure_ascii=False, indent=2)
         with open(mod_spec_json, "w", encoding="utf-8-sig") as f:
             json.dump(mod_payload, f, ensure_ascii=False, indent=2)
+        with open(mod_b_spec_json, "w", encoding="utf-8-sig") as f:
+            json.dump(mod_b_payload, f, ensure_ascii=False, indent=2)
+        with open(shared_spec_json, "w", encoding="utf-8-sig") as f:
+            json.dump(shared_payload, f, ensure_ascii=False, indent=2)
 
         for cmd in (
             [sys.executable, os.path.join(SCRIPT_DIR, "diagram_dsl.py"), diagrams_json, diagrams_out],
             [node_bin, os.path.join(SCRIPT_DIR, "snap_diagrams.cjs"), f"--engine={engine}", diagrams_out],
             [sys.executable, os.path.join(SCRIPT_DIR, "build_from_spec.py"), "--spec", spec_json, "--diagrams-dir", diagrams_out, "--mode", "full", "--strict-delivery", "--out", out_docx],
             [sys.executable, os.path.join(SCRIPT_DIR, "build_from_spec.py"), "--spec", mod_spec_json, "--diagrams-dir", diagrams_out, "--mode", "module", "--strict-delivery", "--out", mod_out_docx],
+            [sys.executable, os.path.join(SCRIPT_DIR, "merge_sdd.py"), "assemble", "--module", mod_spec_json, mod_b_spec_json, "--shared", shared_spec_json, shared_spec_json, "--diagrams-dir", diagrams_out, "--mode", "full", "--strict-delivery", "--out", merged_full_docx],
+            [sys.executable, os.path.join(SCRIPT_DIR, "merge_sdd.py"), "inject", "--target-docx", merged_full_docx, "--module", mod_b_spec_json, "--shared", shared_spec_json, "--diagrams-dir", diagrams_out, "--out", injected_docx],
+            [sys.executable, os.path.join(SCRIPT_DIR, "merge_sdd.py"), "inspect", "--docx", injected_docx],
         ):
             res = run_cmd(cmd)
             if res.stdout:
@@ -167,6 +191,13 @@ def run_smoke_test(engine="auto", keep_docx=""):
                 if res.stderr:
                     print(res.stderr.rstrip(), file=sys.stderr)
                 raise RuntimeError(f"Smoke test command failed: {' '.join(cmd)}")
+
+        # Verify injected_docx actually incremented business modules cleanly (3.1, 3.2, 3.3) & refreshed TOC
+        with zipfile.ZipFile(injected_docx, "r") as zin:
+            inj_doc_xml = zin.read("word/document.xml").decode("utf-8", "ignore")
+            for must_h in ("3.1 示例可迁移模块详细设计", "3.2 业务域 B 详细设计", "3.3 业务域 B 详细设计", "3.99.1 统一认证与网络重试", "HYPERLINK \\l _Toc"):
+                if must_h not in inj_doc_xml:
+                    raise RuntimeError(f"Injected docx failed verification for '{must_h}'")
 
         png_path = os.path.join(diagrams_out, "fig_smoke_flow.png")
         with open(png_path, "rb") as f:

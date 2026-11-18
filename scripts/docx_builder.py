@@ -22,11 +22,23 @@ def read_png_size(path: str):
 
 
 class DocxBuilder:
-    def __init__(self, header_title: str, doc_title: str, creator: str = "研发团队", template_docx: str = ""):
+    DEFAULT_STYLE_MAP = {1: "000008", 2: "000009", 3: "00000a", 4: "00000b", 5: "00000c"}
+
+    def __init__(
+        self,
+        header_title: str,
+        doc_title: str,
+        creator: str = "研发团队",
+        template_docx: str = "",
+        style_map: dict = None,
+        tbl_style: str = "000014",
+    ):
         self.header_title = header_title
         self.doc_title = doc_title
         self.creator = creator
         self.template_docx = template_docx
+        self.style_map = dict(style_map) if style_map else dict(self.DEFAULT_STYLE_MAP)
+        self.tbl_style = tbl_style
         self._para_seq = 1
         self._bm_seq = 10
         self._docpr_seq = 1
@@ -34,6 +46,23 @@ class DocxBuilder:
         self.elements = []
         self.toc_entries = []  # (level 1..3, bookmark_name, title, est_page)
         self.images = []       # (rid, target_name, src_path)
+
+    @staticmethod
+    def _normalize_lines(val) -> list:
+        if val is None:
+            return []
+        if isinstance(val, (list, tuple)):
+            out = []
+            for item in val:
+                for sub in str(item).splitlines():
+                    s = sub.strip()
+                    if s:
+                        out.append(s)
+            return out
+        s = str(val).strip()
+        if not s:
+            return []
+        return [line.strip() for line in s.splitlines() if line.strip()]
 
     def _next_para_id(self) -> str:
         val = f"{0x10000000 + self._para_seq:08X}"
@@ -71,8 +100,7 @@ class DocxBuilder:
         )
 
     def add_heading(self, level: int, text: str, page_break: bool = False, est_page: int = 1, center: bool = False):
-        style_map = {1: "000008", 2: "000009", 3: "00000a", 4: "00000b", 5: "00000c"}
-        style_id = style_map[level]
+        style_id = self.style_map.get(level, self.style_map.get(5, "00000c"))
         pid = self._next_para_id()
         ppr_extra = '<w:pageBreakBefore w:val="1"/>' if page_break else ''
         jc_xml = '<w:jc w:val="center"/>' if center else '<w:jc w:val="left"/>'
@@ -115,7 +143,10 @@ class DocxBuilder:
             )
             bold_prefix = ""
 
-        lines = str(text).split("\n")
+        if isinstance(text, (list, tuple)):
+            lines = self._normalize_lines(text) or [""]
+        else:
+            lines = str(text).split("\n")
         for idx, line in enumerate(lines):
             pid = self._next_para_id()
             runs = []
@@ -230,7 +261,7 @@ class DocxBuilder:
                 val = row[c_idx] if c_idx < len(row) else ""
                 cw = col_widths[c_idx]
                 jc = '<w:jc w:val="center"/>' if c_idx in center_cols else '<w:jc w:val="left"/>'
-                lines = str(val).split("\n")
+                lines = self._normalize_lines(val) or [""]
                 p_list = []
                 for l_idx, line in enumerate(lines):
                     lpid = self._next_para_id()
@@ -247,8 +278,9 @@ class DocxBuilder:
                 )
             tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/></w:trPr>{"".join(row_cells)}</w:tr>')
 
+        tbl_style_xml = f'<w:tblStyle w:val="{self.tbl_style}"/>' if self.tbl_style else ""
         self.elements.append(
-            f'<w:tbl><w:tblPr><w:tblStyle w:val="000014"/><w:tblW w:w="{total_w}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>'
+            f'<w:tbl><w:tblPr>{tbl_style_xml}<w:tblW w:w="{total_w}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>'
             f'<w:tblBorders><w:top w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
             f'<w:left w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
             f'<w:bottom w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
@@ -313,26 +345,58 @@ class DocxBuilder:
             f'{"".join(hdr_runs)}</w:p></w:tc></w:tr>'
         )
 
-        # Row 1: Structured body details
+        # Row 1: Structured body details (always one item per line when list/multiline)
         body_paras = []
-        kv_items = [
+
+        def _append_kv_section(label: str, label_color: str, raw_val):
+            lines = self._normalize_lines(raw_val)
+            if not lines:
+                return
+            if len(lines) == 1:
+                pid_b = self._next_para_id()
+                body_paras.append(
+                    f'<w:p w14:paraId="{pid_b}"><w:pPr><w:spacing w:before="30" w:after="30" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
+                    f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                    f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                    f'<w:b w:val="1"/><w:color w:val="{label_color}"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(label)}</w:r>'
+                    f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                    f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(lines[0])}</w:r></w:p>'
+                )
+            else:
+                pid_lbl = self._next_para_id()
+                body_paras.append(
+                    f'<w:p w14:paraId="{pid_lbl}"><w:pPr><w:keepNext w:val="1"/><w:spacing w:before="35" w:after="15" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
+                    f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                    f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                    f'<w:b w:val="1"/><w:color w:val="{label_color}"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(label)}</w:r></w:p>'
+                )
+                num_pat = re.compile(r"^(?:[•\-]|(?:\d+[\.、）\)]|[（\(]\d+[）\)]|[①②③④⑤⑥⑦⑧⑨⑩]))\s*")
+                for sub in lines:
+                    pid_sub = self._next_para_id()
+                    prefix_dot = "" if num_pat.match(sub) else "•  "
+                    runs_sub = []
+                    if prefix_dot:
+                        runs_sub.append(
+                            f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                            f'<w:color w:val="64748B"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>{self._t(prefix_dot)}</w:r>'
+                        )
+                    runs_sub.append(
+                        f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                        f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(sub)}</w:r>'
+                    )
+                    body_paras.append(
+                        f'<w:p w14:paraId="{pid_sub}"><w:pPr><w:spacing w:before="15" w:after="20" w:line="250" w:lineRule="auto"/>'
+                        f'<w:jc w:val="left"/><w:ind w:left="260" w:hanging="160"/>'
+                        f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                        f'{"".join(runs_sub)}</w:p>'
+                    )
+
+        for label, val in [
             ("调用时机：", card.get("trigger", "")),
             ("请求参数：", card.get("request", "")),
             ("展示与消费：", card.get("display", "")),
-        ]
-        for label, val in kv_items:
-            val_str = str(val).strip()
-            if not val_str:
-                continue
-            pid_b = self._next_para_id()
-            body_paras.append(
-                f'<w:p w14:paraId="{pid_b}"><w:pPr><w:spacing w:before="30" w:after="30" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
-                f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
-                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
-                f'<w:b w:val="1"/><w:color w:val="334155"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(label)}</w:r>'
-                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
-                f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(val_str)}</w:r></w:p>'
-            )
+        ]:
+            _append_kv_section(label, "334155", val)
 
         fields = card.get("fields", []) or []
         if fields:
@@ -378,17 +442,7 @@ class DocxBuilder:
                     f'{"".join(f_runs)}</w:p>'
                 )
 
-        fallback = str(card.get("fallback", "")).strip()
-        if fallback:
-            pid_fb = self._next_para_id()
-            body_paras.append(
-                f'<w:p w14:paraId="{pid_fb}"><w:pPr><w:spacing w:before="35" w:after="30" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
-                f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
-                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
-                f'<w:b w:val="1"/><w:color w:val="B45309"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t("异常与网络兜底：")}</w:r>'
-                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
-                f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(fallback)}</w:r></w:p>'
-            )
+        _append_kv_section("异常与网络兜底：", "B45309", card.get("fallback", ""))
 
         if not body_paras:
             pid_empty = self._next_para_id()
@@ -400,8 +454,9 @@ class DocxBuilder:
             f'{"".join(body_paras)}</w:tc></w:tr>'
         )
 
+        tbl_style_xml = f'<w:tblStyle w:val="{self.tbl_style}"/>' if self.tbl_style else ""
         self.elements.append(
-            f'<w:tbl><w:tblPr><w:tblStyle w:val="000014"/><w:tblW w:w="{total_w}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>'
+            f'<w:tbl><w:tblPr>{tbl_style_xml}<w:tblW w:w="{total_w}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>'
             f'<w:tblBorders><w:top w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
             f'<w:left w:val="single" w:color="{badge_hex}" w:sz="24" w:space="0"/>'
             f'<w:bottom w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'

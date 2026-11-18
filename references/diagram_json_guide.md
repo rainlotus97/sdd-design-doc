@@ -78,17 +78,23 @@
       "methods": ["+start(): Promise<Result>", "+stop(): Promise<void>"]
     },
     {
+      "id": "state_enum", "name": "SessionState", "stereotype": "«enum»", "role": "enum",
+      "x": 740, "y": 55, "w": 240,
+      "attrs": ["IDLE = 'idle'", "ACTIVE = 'active'", "EXPIRED = 'expired'"]
+    },
+    {
       "id": "cb", "name": "SessionListener", "stereotype": "«interface»", "role": "interface",
       "x": 380, "y": 280, "w": 280,
       "methods": ["+onStateChanged(s): void"]
     }
   ],
   "relations": [
-    { "from": "mgr", "fromSide": "bottom", "to": "cb", "toSide": "top", "kind": "notify", "label": "回调通知" }
+    { "from": "mgr", "fromSide": "bottom", "to": "cb", "toSide": "top", "kind": "notify", "label": "回调通知" },
+    { "from": "mgr", "fromSide": "right", "to": "state_enum", "toSide": "left", "kind": "depend", "label": "状态枚举" }
   ]
 }
 ```
-> `role` 支持 `singleton` / `facade` / `core` / `interface` / `constants` / `default`；`kind` 支持 `assoc` / `depend` / `realize` / `inherit` / `notify`。脚本会自动根据最长文本行撑宽卡片，防止签名截断。
+> `role` 支持 `enum` / `model` / `dto` / `interface` / `singleton` / `facade` / `core` / `constants` / `default`；`kind` 支持 `assoc` / `depend` / `realize` / `inherit` / `notify`。脚本会自动根据最长文本行撑宽卡片，防止签名截断。
 
 ---
 
@@ -118,3 +124,17 @@
   "footer": "依赖约束：严禁下层反向引用上层，跨层异步事件统一经 EventBus 广播。"
 }
 ```
+
+---
+
+## 代码架构类图绘制增强（`3.x.3` 专用规约）
+
+- 当系统进入 **`3.x.3 实现接口设计`** 时，类图需承载清晰的代码骨架（**设计重流程，代码重代码设计**）：
+  1. **按职责拆图（避免单张图塞入 10+ 个窄框）**：当模块包含 `UI/ViewModel + 协议/Service + Enum/DTO 模型` 时，可拆成 **“ViewModel 与服务层类图” + “数据模型与枚举契约类图”**。
+  2. **角色色带区分 (`stereotype` / `role`)**：
+     - `«enum»` / `"role": "enum"`：紫色顶栏（`#6D28D9`），在 `attrs` 中列出真实枚举成员与字面值（如 `IDLE = 'idle'`、`ACTIVE = 'active'`）。
+     - `«Model»` / `«DTO»` / `"role": "model"`：天蓝顶栏（`#0369A1`），列出核心状态/返回字段名与类型。
+     - `«interface»` / `"role": "interface"`：青绿顶栏（`#0F766E`）。
+     - `«CoreService»` / `"role": "core"`：深海军蓝顶栏（`#1E3A5F`）。
+     - `ViewModel` / 普通类：默认主蓝（`#2E74B5`），在 `methods` 中写出公开方法签名与返回类型。
+  3. **禁止渲染私有像素常量与实现细节**：不在类图中堆砌布局坐标或样式常量（如 `*WIDTH` / `*WEIGHT`）。
