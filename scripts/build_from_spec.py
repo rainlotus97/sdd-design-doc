@@ -61,6 +61,8 @@ def apply_block(doc: DocxBuilder, blk: dict, diagrams_dir: str):
         )
     elif btype == "api_card":
         doc.add_api_card(blk)
+    elif btype == "code_card":
+        doc.add_code_card(blk)
     elif btype == "image":
         src = os.path.normpath(blk["file"])
         if not os.path.isabs(src):

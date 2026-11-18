@@ -286,8 +286,8 @@ def _rewrite_block_prefixes(blk: dict, src_prefix: str, dst_prefix: str, fig_map
             [_rewrite_prefix_in_text(str(c), src_prefix, dst_prefix, fig_map) if not isinstance(c, list) else [_rewrite_prefix_in_text(str(s), src_prefix, dst_prefix, fig_map) for s in c] for c in row]
             for row in b.get("rows", [])
         ]
-    elif btype == "api_card":
-        for k in ("summary", "tag", "trigger", "request", "display", "fallback"):
+    elif btype in ("api_card", "code_card"):
+        for k in ("name", "signature", "summary", "tag", "direction", "trigger", "request", "display", "purpose", "params", "inputs", "returns", "outputs", "rules", "logic", "fallback"):
             if k in b and b[k]:
                 v = b[k]
                 if isinstance(v, list):
@@ -530,7 +530,10 @@ def cmd_assemble(args):
             for t in skipped:
                 print(f"[MERGE DEDUP] Skipped duplicated shared capability '{t}' in shared input #{s_idx}")
             if intro and not shared_intro_all:
-                shared_intro_all.extend(intro)
+                renum_intro, next_fig = _stage_and_renumber_module(
+                    intro, s_diag, stage_dir, f"sh_intro_{s_idx:02d}", "3.99", "3.99", next_fig
+                )
+                shared_intro_all.extend(renum_intro)
             for sec in kept_secs:
                 seen_shared_keys.add(sec["key"])
                 dst_sub = f"3.99.{shared_sub_idx}"
@@ -793,7 +796,13 @@ def cmd_inject(args):
                 print(f"[MERGE DEDUP] Target already covers shared capability '{t}'; skipping duplicate.")
             if not info["has_3_99"] and not pending_shared_blocks and kept_secs:
                 pending_shared_blocks.append({"type": "heading", "level": 2, "text": "3.99 公共基础能力设计"})
-                pending_shared_blocks.extend(intro or [{"type": "para", "text": "本节统一收敛跨业务模块复用的公共基础能力，避免在各 3.x 模块中重复描述。"}])
+                if intro:
+                    renum_intro, next_fig = _stage_and_renumber_module(
+                        intro, s_diag, stage_dir, f"injsh_intro_{sh_idx:02d}", "3.99", "3.99", next_fig
+                    )
+                    pending_shared_blocks.extend(renum_intro)
+                else:
+                    pending_shared_blocks.append({"type": "para", "text": "本节统一收敛跨业务模块复用的公共基础能力，避免在各 3.x 模块中重复描述。"})
             for sec in kept_secs:
                 seen_shared_keys.add(sec["key"])
                 dst_sub = f"3.99.{sh_idx}"

@@ -139,12 +139,30 @@ def run_smoke_test(engine="auto", keep_docx=""):
                 {"type": "para", "text": "验证仅第 3 章可移植模块输出模式，不含第 1/2 章与多余目录。认证与重试遵守 3.99.1 规约。"},
                 {
                     "type": "api_card",
-                    "method": "GET",
-                    "endpoint": "/api/v1/demo/status",
-                    "summary": "模块模式接口卡片自检",
-                    "trigger": ["1. 首次进页触发", "2. 定时轮询触发"],
-                    "fields": [{"name": "status", "desc": "运行状态"}],
-                    "fallback": ["1. 网络超时按退避策略重试", "2. 失败维持旧状态"]
+                    "method": "MQTT",
+                    "endpoint": "vessel/self/demo/observe",
+                    "summary": "MQTT Topic 与 Payload 卡片自检",
+                    "direction": "仅激活期按需订阅（ON_DEMAND · LATEST_ONLY）",
+                    "trigger": ["1. 模块处于前台激活时自动订阅", "2. 切离或被覆盖时立即取消订阅"],
+                    "payload": [
+                        "{",
+                        "  \"utc_ts\": 1730000000,",
+                        "  \"items\": [{ \"id\": \"demo\", \"value\": 1 }]",
+                        "}"
+                    ],
+                    "fields": [{"name": "items[].id / value", "desc": "目标标识与实时值"}],
+                    "display": "整表替换界面叠加视图。",
+                    "fallback": ["1. 断链或空载荷清空旧显示", "2. 陈旧快照直接丢弃"]
+                },
+                {
+                    "type": "code_card",
+                    "kind": "func",
+                    "name": "DemoViewModel.applyTelemetry(dto)",
+                    "summary": "精度过滤防抖核心函数",
+                    "purpose": "校验量程并仅在显示精度真正变化时触发重绘。",
+                    "params": "dto: TelemetryDto — 下发原始测点集合",
+                    "returns": "boolean — 界面发生可见变化返回 true",
+                    "rules": ["1. 超出物理量程保留旧值或标 '--'", "2. 一位小数对比不变时跳过状态写入"]
                 },
                 {"type": "image", "file": "fig_smoke_flow.png", "caption": "图 3-1 自检流程图"},
             ],
