@@ -8,17 +8,17 @@
 
 ## 核心特性
 
-- **代码实证优先**：要求核对真实模块路径、类名、接口签名、配置项与日志字段，杜绝凭空编造。
-- **双形态产物**：
-  - **Markdown Story 设计稿（`.md`）**：含 Mermaid 流程图、时序图、分组类图及职责清单。
-  - **Word 详细设计说明书（`.docx`）**：支持封面信息表、自动目录（TOC）、`1 引言`、`2 设计概览`、`3 模块详细设计（3.0 ~ 3.x.6）`、`#2E74B5` 蓝头表格与内置模板。
+- **三大核心交付能力**：
+  1. **完整模板文档生成（`--mode full`）**：生成含封面、目录（TOC）、`1 引言`、`2 设计概览`、`3 模块详细设计` 与 `附录 A` 的完整 Word 详细设计说明书。
+  2. **核心模块可迁移文档生成（`--mode module`）**：专注 **`3 模块详细设计`**（不含多余的第 1、2 章与目录），每个大功能域收口为清晰可读的 `3.x` 章节，方便人工直接复制移植进主模板或交由其他迁移工具处理。
+  3. **`.md` 需求规划 → 确认后再生成文档**：针对新需求或已有 `.md` 草稿，先整理结构化 `.md` 设计规划（标明 `[拟定]` 与 `[待确认]`），经确认无误后再转为 `--mode full` 或 `--mode module` `.docx`。
+- **代码实证优先**：基于已有代码仓设计时核对真实模块、关键类、接口参数与异常边界，杜绝凭空编造。
 - **高清图表流水线**：声明式 `diagrams.json` → SVG/HTML → 2x DPI PNG（`diagram_dsl.py` + `snap_diagrams.cjs`）。
 - **开箱即用跨平台支持（Windows 免装 Playwright）**：
   - `snap_diagrams.cjs` 自动检测本地 / 全局 / `npx` 缓存中的 `playwright` 或 `playwright-core`；
   - 若未安装 Playwright，**自动回退为零依赖原生 Chrome/Edge DevTools Protocol (CDP)**，在 Windows 上直接调用系统自带的 **Microsoft Edge** 或 **Google Chrome** 完成高清截图；
   - 支持读取 Windows UTF-8 with BOM（`utf-8-sig`）JSON、正确处理 Windows `file:///C:/...` 路径 URL、确保 `.docx` ZIP 内部使用 POSIX `/` 路径以及 UTF-8 控制台输出。
-- **排版自适应与防踩坑保障**：默认左对齐消除中英混排换行拉宽、`3.x.3.k` 长签名自动独立成行、跨页表头绑定 `keepNext`（短表整表不拆）消除跨页重复表头，支持 `--strict-delivery` 自动检查未交付 `.md` 引用与正文裸 IP 泄漏。
-- **交付自足与自检**：`build_from_spec.py` 内置 ZIP 完整性、XML 良构、图片数量一致、模板占位符、排版对齐及 `附录 A` 端点收敛检查。
+- **清爽排版与严格交付校验**：内置 `api_card` 卡片清晰分层展示英文接口路径/字段与网络异常兜底，告别长串代码标识符在窄表格里拥挤折行；默认左对齐、长签名自动独立成行、跨页表头 `keepNext` 与短表防拆；`build_from_spec.py --strict-delivery` 自动校验模式结构、零 `.md` 引用与端点集中归档。
 
 ---
 
@@ -96,11 +96,21 @@ node scripts/snap_diagrams.cjs ./diagrams_out
 ### 2. 构建并校验 `.docx`
 
 ```bash
+# 生成核心模块可迁移文档（第 3 章）
+python scripts/build_from_spec.py \
+  --spec spec_module.json \
+  --diagrams-dir ./diagrams_out \
+  --mode module \
+  --strict-delivery \
+  --out ./module_output.docx
+
+# 生成完整模板文档（含封面、TOC、1~3 章及附录 A）
 python scripts/build_from_spec.py \
   --spec spec_part1.json spec_part2.json \
   --diagrams-dir ./diagrams_out \
+  --mode full \
   --strict-delivery \
-  --out ./output.docx
+  --out ./full_output.docx
 ```
 
 若需要使用自定义 Word 模板覆盖内置样式，传入 `--template /path/to/custom_template.docx`。

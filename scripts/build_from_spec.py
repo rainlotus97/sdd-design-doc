@@ -59,6 +59,8 @@ def apply_block(doc: DocxBuilder, blk: dict, diagrams_dir: str):
             col_widths=blk.get("colWidths"),
             center_cols=blk.get("centerCols"),
         )
+    elif btype == "api_card":
+        doc.add_api_card(blk)
     elif btype == "image":
         src = os.path.normpath(blk["file"])
         if not os.path.isabs(src):
@@ -70,7 +72,7 @@ def apply_block(doc: DocxBuilder, blk: dict, diagrams_dir: str):
         raise ValueError(f"Unknown block type: {btype}")
 
 
-def audit_docx(docx_path: str, expected_images: int, custom_template: bool = False, strict_delivery: bool = False):
+def audit_docx(docx_path: str, expected_images: int, custom_template: bool = False, strict_delivery: bool = False, mode: str = "auto"):
     w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
     md_pat = re.compile(r"[A-Za-z0-9_\u4e00-\u9fff-]+\.md")
     ip_pat = re.compile(r"(?:10|127|172|192|0)\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?")
@@ -111,13 +113,27 @@ def audit_docx(docx_path: str, expected_images: int, custom_template: bool = Fal
                     missing_hdr_kn += 1
 
     body_blocks = ["".join(el.itertext()) for el in body] if body is not None else []
-    app_idx = next((i for i, txt in enumerate(body_blocks) if "附录 A" in txt or "附录A" in txt or txt.strip().startswith("附录")), len(body_blocks))
-    pre_app_text = "\n".join(body_blocks[:app_idx])
+    endpoint_tbl_texts = set()
+    for tbl in root.findall(".//w:tbl", ns):
+        txt_t = "".join(tbl.itertext())
+        if any(k in txt_t for k in ("联调端点", "Endpoint", "Mock", "本地服务端点", "环境配置")):
+            endpoint_tbl_texts.add(txt_t)
+    app_idx = next(
+        (i for i, txt in enumerate(body_blocks) if "附录 A" in txt or "附录A" in txt or txt.strip().startswith("附录")),
+        len(body_blocks),
+    )
+    pre_blocks_filtered = [txt for txt in body_blocks[:app_idx] if txt not in endpoint_tbl_texts]
+    pre_app_text = "\n".join(pre_blocks_filtered)
     md_hits = md_pat.findall("\n".join(body_blocks))
     ip_pre_hits = ip_pat.findall(pre_app_text)
 
+    has_toc = "目  录" in doc_text_xml
+    p_texts = ["".join(p.itertext()).strip() for p in body.findall(f"{{{w_ns}}}p")] if body is not None else []
+    has_ch3 = any(t.startswith("3 模块详细设计") or t.startswith("3.1 ") for t in p_texts)
+    has_ch1_or_2 = any(t.startswith("1 引言") or t.startswith("2 设计概览") for t in p_texts)
+
     print(f"[AUDIT] path={docx_path}")
-    print(f"[AUDIT] tables={tables}, drawings={drawings}, media={len(media_files)}, jc_both=({both_styles},{both_doc}), hdr_missing_keepNext={missing_hdr_kn}")
+    print(f"[AUDIT] mode={mode}, tables={tables}, drawings={drawings}, media={len(media_files)}, jc_both=({both_styles},{both_doc}), hdr_missing_keepNext={missing_hdr_kn}")
     if md_hits:
         print(f"[AUDIT WARN] Internal .md file reference(s) detected: {md_hits[:8]}")
     if ip_pre_hits:
@@ -127,6 +143,15 @@ def audit_docx(docx_path: str, expected_images: int, custom_template: bool = Fal
         raise RuntimeError(f"Image count mismatch: expected={expected_images}, drawings={drawings}, media={len(media_files)}")
     if leftovers:
         raise RuntimeError(f"Leftover template tokens found: {leftovers}")
+    if mode == "full" and not has_toc:
+        raise RuntimeError("Mode 'full' requires a 'toc' block in the document spec")
+    if mode == "module":
+        if has_toc:
+            raise RuntimeError("Mode 'module' must not include a standalone TOC block ('目  录')")
+        if not has_ch3:
+            raise RuntimeError("Mode 'module' requires '3 模块详细设计' or '3.1 ...' module sections")
+        if strict_delivery and has_ch1_or_2:
+            raise RuntimeError("Mode 'module' with --strict-delivery must focus only on Chapter 3 without '1 引言' / '2 设计概览'")
     if (not custom_template or strict_delivery) and (both_styles > 0 or both_doc > 0 or missing_hdr_kn > 0):
         raise RuntimeError(f"OOXML layout check failed: jc_both=({both_styles},{both_doc}), hdr_missing_keepNext={missing_hdr_kn}")
     if strict_delivery and (md_hits or ip_pre_hits):
@@ -140,6 +165,7 @@ def main():
     parser.add_argument("--spec", nargs="+", required=True, help="Ordered JSON spec file(s)")
     parser.add_argument("--diagrams-dir", default=".", help="Directory containing rendered diagram PNGs")
     parser.add_argument("--template", default="", help="Optional custom .docx template path")
+    parser.add_argument("--mode", default="auto", choices=["auto", "full", "module"], help="Document mode: 'full' (full template SDD), 'module' (portable Chapter-3-only module doc), or 'auto'")
     parser.add_argument("--strict-delivery", action="store_true", help="Fail if internal .md refs, pre-appendix bare IPs, jc='both', or orphaned table headers exist")
     parser.add_argument("--out", required=True, help="Output .docx file path")
     args = parser.parse_args()
@@ -159,9 +185,14 @@ def main():
         else:
             raise ValueError(f"Invalid spec JSON root in {sp_path}")
 
-    toc_default_ones = sum(1 for b in blocks if b.get("type") == "heading" and int(b.get("level", 9)) <= 3 and "estPage" not in b)
-    if toc_default_ones > 0:
-        print(f"[AUDIT WARN] {toc_default_ones} TOC heading(s) missing 'estPage' (will default to page 1 in TOC)")
+    resolved_mode = args.mode
+    if resolved_mode == "auto":
+        resolved_mode = "full" if any(b.get("type") == "toc" for b in blocks) else "module"
+
+    if resolved_mode == "full" and any(b.get("type") == "toc" for b in blocks):
+        toc_default_ones = sum(1 for b in blocks if b.get("type") == "heading" and int(b.get("level", 9)) <= 3 and "estPage" not in b)
+        if toc_default_ones > 0:
+            print(f"[AUDIT WARN] {toc_default_ones} TOC heading(s) missing 'estPage' (will default to page 1 in TOC)")
 
     doc = DocxBuilder(
         header_title=meta.get("headerTitle", meta.get("docTitle", "软件开发详细设计说明书")),
@@ -176,7 +207,7 @@ def main():
         apply_block(doc, blk, args.diagrams_dir)
 
     out_path = doc.build(args.out)
-    audit_docx(out_path, img_count, custom_template=bool(args.template), strict_delivery=bool(args.strict_delivery))
+    audit_docx(out_path, img_count, custom_template=bool(args.template), strict_delivery=bool(args.strict_delivery), mode=resolved_mode)
 
 
 if __name__ == "__main__":

@@ -217,7 +217,10 @@ class DocxBuilder:
                 f'<w:b w:val="1"/><w:color w:val="FFFFFF"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>'
                 f'{self._t(str(htext))}</w:r></w:p></w:tc>'
             )
-        tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/><w:tblHeader w:val="1"/></w:trPr>{"".join(hdr_cells)}</w:tr>')
+        if len(rows) > 3:
+            tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/><w:tblHeader w:val="1"/></w:trPr>{"".join(hdr_cells)}</w:tr>')
+        else:
+            tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/></w:trPr>{"".join(hdr_cells)}</w:tr>')
 
         keep_short_table = len(rows) <= 3
         for r_idx, row in enumerate(rows):
@@ -233,7 +236,7 @@ class DocxBuilder:
                     lpid = self._next_para_id()
                     p_kn = row_keep_next if l_idx == len(lines) - 1 else '<w:keepNext w:val="1"/>'
                     p_list.append(
-                        f'<w:p w14:paraId="{lpid}"><w:pPr>{p_kn}<w:spacing w:before="25" w:after="25" w:line="240" w:lineRule="auto"/>{jc}'
+                        f'<w:p w14:paraId="{lpid}"><w:pPr>{p_kn}<w:spacing w:before="35" w:after="35" w:line="260" w:lineRule="auto"/>{jc}'
                         f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
                         f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
                         f'<w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>'
@@ -245,17 +248,170 @@ class DocxBuilder:
             tr_list.append(f'<w:tr><w:trPr><w:cantSplit w:val="1"/></w:trPr>{"".join(row_cells)}</w:tr>')
 
         self.elements.append(
-            f'<w:tbl><w:tblPr><w:tblStyle w:val="000014"/><w:tblW w:w="0" w:type="auto"/><w:tblInd w:w="0" w:type="dxa"/>'
-            f'<w:tblBorders><w:top w:val="single" w:color="auto" w:sz="4" w:space="0"/>'
-            f'<w:left w:val="single" w:color="auto" w:sz="4" w:space="0"/>'
-            f'<w:bottom w:val="single" w:color="auto" w:sz="4" w:space="0"/>'
-            f'<w:right w:val="single" w:color="auto" w:sz="4" w:space="0"/>'
-            f'<w:insideH w:val="single" w:color="auto" w:sz="4" w:space="0"/>'
-            f'<w:insideV w:val="single" w:color="auto" w:sz="4" w:space="0"/></w:tblBorders>'
+            f'<w:tbl><w:tblPr><w:tblStyle w:val="000014"/><w:tblW w:w="{total_w}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>'
+            f'<w:tblBorders><w:top w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:left w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:bottom w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:right w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:insideH w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:insideV w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/></w:tblBorders>'
             f'<w:tblLayout w:type="fixed"/>'
-            f'<w:tblCellMar><w:top w:w="30" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="30" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar>'
+            f'<w:tblCellMar><w:top w:w="55" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="55" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar>'
             f'</w:tblPr><w:tblGrid>{grid_cols}</w:tblGrid>{"".join(tr_list)}</w:tbl>'
         )
+
+    def add_api_card(self, card: dict):
+        """Render a clean, scannable external interface card (HTTP/MQTT/UDP/WS) without narrow-column clutter."""
+        total_w = 9643
+        method = str(card.get("method", "API")).strip().upper()
+        endpoint = str(card.get("endpoint", "")).strip()
+        summary = str(card.get("summary", "")).strip()
+        tag = str(card.get("tag", "")).strip()
+
+        badge_colors = {
+            "GET": "059669",
+            "POST": "1D4ED8",
+            "PUT": "D97706",
+            "DELETE": "C62828",
+            "MQTT": "7C3AED",
+            "UDP": "B45309",
+            "WS": "0369A1",
+            "IPC": "334155",
+        }
+        badge_hex = badge_colors.get(method, "2E74B5")
+
+        # Row 0: Header strip with method pill + bold endpoint + Chinese summary
+        pid_h = self._next_para_id()
+        hdr_runs = [
+            f'<w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:eastAsia="微软雅黑"/>'
+            f'<w:b w:val="1"/><w:color w:val="{badge_hex}"/><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr>'
+            f'{self._t(f"[{method}] ")}</w:r>'
+        ]
+        if endpoint:
+            hdr_runs.append(
+                f'<w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:eastAsia="微软雅黑"/>'
+                f'<w:b w:val="1"/><w:color w:val="0F172A"/><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr>'
+                f'{self._t(endpoint)}</w:r>'
+            )
+        if summary:
+            hdr_runs.append(
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:b w:val="1"/><w:color w:val="1E3A5F"/><w:sz w:val="19"/><w:szCs w:val="19"/><w:lang w:eastAsia="zh-CN"/></w:rPr>'
+                f'{self._t(f"  —  {summary}")}</w:r>'
+            )
+        if tag:
+            hdr_runs.append(
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:color w:val="475569"/><w:sz w:val="17"/><w:szCs w:val="17"/><w:lang w:eastAsia="zh-CN"/></w:rPr>'
+                f'{self._t(f"  ({tag})")}</w:r>'
+            )
+        tr_hdr = (
+            f'<w:tr><w:trPr><w:cantSplit w:val="1"/></w:trPr>'
+            f'<w:tc><w:tcPr><w:tcW w:w="{total_w}" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="EFF6FF"/><w:vAlign w:val="center"/></w:tcPr>'
+            f'<w:p w14:paraId="{pid_h}"><w:pPr><w:keepNext w:val="1"/><w:spacing w:before="45" w:after="45" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
+            f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="19"/></w:rPr></w:pPr>'
+            f'{"".join(hdr_runs)}</w:p></w:tc></w:tr>'
+        )
+
+        # Row 1: Structured body details
+        body_paras = []
+        kv_items = [
+            ("调用时机：", card.get("trigger", "")),
+            ("请求参数：", card.get("request", "")),
+            ("展示与消费：", card.get("display", "")),
+        ]
+        for label, val in kv_items:
+            val_str = str(val).strip()
+            if not val_str:
+                continue
+            pid_b = self._next_para_id()
+            body_paras.append(
+                f'<w:p w14:paraId="{pid_b}"><w:pPr><w:spacing w:before="30" w:after="30" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
+                f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:b w:val="1"/><w:color w:val="334155"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(label)}</w:r>'
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(val_str)}</w:r></w:p>'
+            )
+
+        fields = card.get("fields", []) or []
+        if fields:
+            pid_fl = self._next_para_id()
+            body_paras.append(
+                f'<w:p w14:paraId="{pid_fl}"><w:pPr><w:spacing w:before="35" w:after="20" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
+                f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:b w:val="1"/><w:color w:val="334155"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t("核心字段：")}</w:r></w:p>'
+            )
+            for item in fields:
+                if isinstance(item, dict):
+                    fname = str(item.get("name", "")).strip()
+                    fdesc = str(item.get("desc", "")).strip()
+                elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                    fname, fdesc = str(item[0]).strip(), str(item[1]).strip()
+                else:
+                    fname, fdesc = "", str(item).strip()
+                pid_fi = self._next_para_id()
+                f_runs = [
+                    f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                    f'<w:color w:val="64748B"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>{self._t("•  ")}</w:r>'
+                ]
+                if fname:
+                    f_runs.append(
+                        f'<w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:eastAsia="微软雅黑"/>'
+                        f'<w:b w:val="1"/><w:color w:val="1D4ED8"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>{self._t(fname)}</w:r>'
+                    )
+                    if fdesc:
+                        f_runs.append(
+                            f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                            f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(f"：{fdesc}")}</w:r>'
+                        )
+                elif fdesc:
+                    f_runs.append(
+                        f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                        f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(fdesc)}</w:r>'
+                    )
+                body_paras.append(
+                    f'<w:p w14:paraId="{pid_fi}"><w:pPr><w:spacing w:before="15" w:after="20" w:line="250" w:lineRule="auto"/>'
+                    f'<w:jc w:val="left"/><w:ind w:left="260" w:hanging="160"/>'
+                    f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                    f'{"".join(f_runs)}</w:p>'
+                )
+
+        fallback = str(card.get("fallback", "")).strip()
+        if fallback:
+            pid_fb = self._next_para_id()
+            body_paras.append(
+                f'<w:p w14:paraId="{pid_fb}"><w:pPr><w:spacing w:before="35" w:after="30" w:line="260" w:lineRule="auto"/><w:jc w:val="left"/>'
+                f'<w:rPr><w:rFonts w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/><w:sz w:val="18"/></w:rPr></w:pPr>'
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:b w:val="1"/><w:color w:val="B45309"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t("异常与网络兜底：")}</w:r>'
+                f'<w:r><w:rPr><w:rFonts w:hint="eastAsia" w:ascii="微软雅黑" w:hAnsi="微软雅黑" w:eastAsia="微软雅黑"/>'
+                f'<w:color w:val="1F2937"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="zh-CN"/></w:rPr>{self._t(fallback)}</w:r></w:p>'
+            )
+
+        if not body_paras:
+            pid_empty = self._next_para_id()
+            body_paras.append(f'<w:p w14:paraId="{pid_empty}"><w:pPr/></w:p>')
+
+        tr_body = (
+            f'<w:tr><w:trPr><w:cantSplit w:val="1"/></w:trPr>'
+            f'<w:tc><w:tcPr><w:tcW w:w="{total_w}" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="FFFFFF"/><w:vAlign w:val="center"/></w:tcPr>'
+            f'{"".join(body_paras)}</w:tc></w:tr>'
+        )
+
+        self.elements.append(
+            f'<w:tbl><w:tblPr><w:tblStyle w:val="000014"/><w:tblW w:w="{total_w}" w:type="dxa"/><w:tblInd w:w="0" w:type="dxa"/>'
+            f'<w:tblBorders><w:top w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:left w:val="single" w:color="{badge_hex}" w:sz="24" w:space="0"/>'
+            f'<w:bottom w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:right w:val="single" w:color="CBD5E1" w:sz="4" w:space="0"/>'
+            f'<w:insideH w:val="single" w:color="E2E8F0" w:sz="4" w:space="0"/></w:tblBorders>'
+            f'<w:tblLayout w:type="fixed"/>'
+            f'<w:tblCellMar><w:top w:w="65" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="65" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tblCellMar>'
+            f'</w:tblPr><w:tblGrid><w:gridCol w:w="{total_w}"/></w:tblGrid>{tr_hdr}{tr_body}</w:tbl>'
+        )
+        self.add_blank(8)
 
     def add_image(self, png_path: str, caption: str, max_width_emu: int = 5852160):
         rid = f"rId{self._rid_seq}"
@@ -441,9 +597,12 @@ class DocxBuilder:
             with open(os.path.join(work_dir, "docProps", "core.xml"), "w", encoding="utf-8") as f:
                 f.write(core_xml)
 
-            toc_els = self._build_toc_elements() if self.toc_entries else []
-            idx = getattr(self, "toc_insert_index", len(self.elements))
-            full_elements = self.elements[:idx] + toc_els + self.elements[idx:]
+            idx = getattr(self, "toc_insert_index", None)
+            if idx is not None and self.toc_entries:
+                toc_els = self._build_toc_elements()
+                full_elements = self.elements[:idx] + toc_els + self.elements[idx:]
+            else:
+                full_elements = self.elements
 
             # Preserve custom template sectPr if custom template used, else use default
             sect_pr = (
